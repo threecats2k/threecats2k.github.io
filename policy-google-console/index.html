@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Google Console — CI/CD API usage & permissions</title>
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; line-height: 1.6; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #111; }
+    h1,h2,h3 { color:#0b4a6f }
+    pre { background:#f6f8fa; padding:12px; overflow:auto }
+    code { background:#eef; padding:0 4px; border-radius:3px }
+    .note { background:#fff3cd; padding:10px; border-left:4px solid #ffeeba; margin:10px 0 }
+  </style>
+</head>
+<body>
+  <h1>Google Console — CI/CD API usage & permissions</h1>
+
+  <p>Purpose: This page documents which Google APIs and permissions are required by the project's GitHub Actions workflows and why those permissions are needed. The CI/CD pipeline uploads build artifacts (Android app binaries) to Google Drive and uploads video assets to YouTube after builds. This document also explains how credentials are stored and recommended security/consent steps for Google verification.</p>
+
+  <h2>APIs to enable in Google Cloud Console</h2>
+  <ul>
+    <li>YouTube Data API v3 — required to upload videos and manage video metadata.</li>
+    <li>Google Drive API — required to upload built artifacts (APK / AAB) or store build artifacts in Drive.</li>
+  </ul>
+
+  <h2>OAuth scopes required</h2>
+  <p>Use the principle of least privilege: only request the specific scopes you need.</p>
+  <ul>
+    <li><code>https://www.googleapis.com/auth/youtube.upload</code> — upload videos to YouTube (recommended minimal scope for uploads).</li>
+    <li><code>https://www.googleapis.com/auth/youtube</code> — broader YouTube scope (only request if you need channel management beyond uploads).</li>
+    <li><code>https://www.googleapis.com/auth/drive.file</code> — allow the app to create and manage files it has created or opened (preferred to avoid full-drive access).</li>
+  </ul>
+
+  <h2>Authentication options for CI</h2>
+  <p>Two common approaches for GitHub Actions:</p>
+  <ol>
+    <li><strong>OAuth client + refresh token (recommended for YouTube uploads):</strong>
+      <p>YouTube uploads normally require OAuth on behalf of a channel owner — service accounts cannot access YouTube channels. Create OAuth client credentials (Web or Other), perform one-time interactive consent to generate a refresh token for the target YouTube account, then store the refresh token and client credentials as encrypted GitHub secrets. The workflow exchanges the refresh token for access tokens during runs.</p>
+    </li>
+    <li><strong>Service account (possible for Drive only):</strong>
+      <p>For Drive uploads where a service account can be authorized to a Drive folder or Google Workspace domain, use a service account JSON key (stored as a GitHub secret) and use the Drive API with that service account. This does not work for uploading to a personal YouTube channel.</p>
+    </li>
+  </ol>
+
+  <div class="note">
+    <strong>Important:</strong> YouTube uploads require OAuth consent by the channel owner. If you request sensitive or restricted scopes, Google will require verification of the OAuth consent screen and a privacy policy URL.
+  </div>
+
+  <h2>What data is accessed and stored</h2>
+  <ul>
+    <li>Uploaded video files and metadata (title, description, thumbnails) are stored on YouTube and are subject to YouTube's policies.</li>
+    <li>Build artifacts (APK, AAB, logs) uploaded to Google Drive are stored in the Drive account/folder used by the workflow.</li>
+    <li>Authentication tokens/keys (OAuth client ID/secret, refresh token, or service account JSON) are stored only as encrypted GitHub repository secrets. The actions runner obtains tokens at runtime and uses them temporarily; tokens are not committed to the repo.</li>
+    <li>Action logs may contain minimal metadata about the upload; avoid echoing secrets in logs.</li>
+  </ul>
+
+  <h2>Security & best practices</h2>
+  <ul>
+    <li>Store credentials in GitHub Actions secrets (Repository/Organization secrets) and never commit keys to source control.</li>
+    <li>Use least-privilege scopes: prefer <code>drive.file</code> instead of full <code>drive</code>, and only request YouTube scopes needed for upload.</li>
+    <li>Rotate keys and refresh tokens regularly and immediately after suspected compromise.</li>
+    <li>Limit which repositories and workflows can access organization-level secrets (use environments and required reviewers if needed).</li>
+    <li>Restrict service-account access to a specific Drive folder and grant minimal roles (e.g., roles/drive.file via IAM) when possible.</li>
+    <li>Do not print secrets or tokens to CI logs.</li>
+  </ul>
+
+  <h2>OAuth consent & verification notes</h2>
+  <p>When setting up OAuth consent screen in Google Cloud Console:</p>
+  <ul>
+    <li>Provide a clear Application name and Support email.</li>
+    <li>Authorized domains should include the domain hosting this project's privacy policy (for GitHub Pages use your github.io domain or a custom domain).</li>
+    <li>Provide a valid Privacy Policy URL (this project must include a privacy policy page that explains how user data and uploaded files are handled).</li>
+    <li>If you request sensitive scopes (YouTube upload qualifies), Google may require verification which can take several days and asks for demonstration videos, justification, and a privacy policy.</li>
+  </ul>
+
+  <h2>Suggested GitHub Actions secrets (example names)</h2>
+  <pre><code>YOUTUBE_CLIENT_ID
+YOUTUBE_CLIENT_SECRET
+YOUTUBE_REFRESH_TOKEN
+GCP_SERVICE_ACCOUNT_KEY  (JSON, only if using service account for Drive)
+DRIVE_UPLOAD_FOLDER_ID   (optional; target Drive folder)</code></pre>
+
+  <h2>Example workflow notes (high level)</h2>
+  <ul>
+    <li>After build completes, the workflow authenticates (exchange refresh token for access token or use service account credentials) and uploads the artifact to Drive or uploads a video to YouTube via the YouTube Data API.</li>
+    <li>Use existing open-source GitHub Actions for YouTube upload or Drive upload when possible; inspect their implementation and scope usage before trusting them.</li>
+  </ul>
+
+  <h2>Privacy & contact</h2>
+  <p>This page describes programmatic access the CI uses to upload artifacts and videos. Uploaded content will be stored in the Google accounts chosen by the project owner. For privacy questions or to request removal of uploaded content, contact: <a href="mailto:YOUR-EMAIL@example.com">YOUR-EMAIL@example.com</a>.</p>
+
+  <h2>References & links</h2>
+  <ul>
+    <li><a href="https://developers.google.com/drive/api/v3/about-auth">Drive API scopes and auth</a></li>
+    <li><a href="https://developers.google.com/youtube/v3/guides/uploading_a_video">YouTube Data API — uploading videos</a></li>
+    <li><a href="https://support.google.com/cloud/answer/6158849">OAuth consent screen & verification</a></li>
+  </ul>
+
+  <footer style="margin-top:40px; font-size:0.9em; color:#444">
+    <p>Page generated for repository policy reference. Replace <code>YOUR-EMAIL@example.com</code> and any placeholders with real contact details and link this page from your privacy policy / OAuth consent screen as needed.</p>
+  </footer>
+</body>
+</html>
